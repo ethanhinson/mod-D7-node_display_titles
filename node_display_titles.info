@@ -1,0 +1,4 @@
+name = Node Display Titles
+description = "Allow users to determine H1 tags with Tokens."
+package = Search
+core = 7.x

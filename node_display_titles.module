@@ -1,0 +1,58 @@
+<?php
+/**
+ * @file
+ * Primary hook implementations for Title Override.
+ */
+
+/**
+ * Implements hook_menu()
+ */
+function node_display_titles_menu() {
+  $items['admin/config/search/node-display-titles'] = array(
+    'title' => t('Node Display Titles'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('node_display_titles_config'),
+    'access arguments' => array('administer node display titles'),
+    'file' => 'node_display_titles.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function node_display_titles_permission() {
+  $permissions['administer node display titles'] = array(
+    'title' => t('Administer node display titles.'),
+    'description' => t('Override node titles.'),
+  );
+  return $permissions;
+}
+
+/**
+ * Implements hook_preprocess_page().
+ */
+function node_display_titles_preprocess_page(&$vars) {
+  if(array_key_exists('node', $vars)) {
+    $pattern = variable_get($vars['node']->type . '_title_pattern', FALSE);
+    if($pattern) {
+      $options = array(
+        'callback' => variable_get('node_display_titles_sanitization_callback', 'node_display_titles_token_sanitize'),
+        'clear' => variable_get('node_display_titles_clear_tokens', TRUE),
+      );
+      $title = token_replace($pattern, array('node' => $vars['node']), $options);
+      drupal_set_title($title, PASS_THROUGH);
+    }
+  }
+}
+
+/**
+ * Default sanitization callback for tokenized H1s
+ */
+
+function node_display_titles_token_sanitize(&$tokens) {
+  foreach($tokens as $k => $v) {
+    $tokens[$k] = strip_tags($v);
+  }
+}
