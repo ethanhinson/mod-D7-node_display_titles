@@ -84,7 +84,8 @@ function node_display_titles_render_title($field) {
     // Render field with ds_render_field to make sure wrappers, classes, and
     // other formatting are added.
     return ds_render_field($field);
-  } else {
+  }
+  else {
     // If ds_render_field funtion doesn't exist, just return unformatted title.
     return $field['entity']->title;
   }
