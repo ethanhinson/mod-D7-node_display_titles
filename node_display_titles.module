@@ -68,6 +68,7 @@ function node_display_titles_render_title($field) {
     $node = menu_get_object();
     if ($node->nid == $field['entity']->nid) {
       // Generate a custom title for this node.
+      //dsm($field);
       $title = node_display_titles_generate_title($field['entity']);
       if ($title) {
         // If there was a pattern set for this node, use custom title.
@@ -86,7 +87,7 @@ function node_display_titles_render_title($field) {
     return ds_render_field($field);
   }
   else {
-    // If ds_render_field funtion doesn't exist, just return unformatted title.
+    // If ds_render_field function doesn't exist, just return unformatted title.
     return $field['entity']->title;
   }
 }
@@ -105,7 +106,25 @@ function node_display_titles_generate_title($node) {
       'clear' => variable_get('node_display_titles_clear_tokens', TRUE),
     );
 
-    $title = token_replace($pattern, array('node' => $node), $options);
+    if ($node->type = 'vr_listing') {
+      // Apply custom pattern for ResCMS VR listings
+      if ($entity = entity_load_single('rc_core_item', $node->rc_core_item_eid)) {
+        if ($item = $entity->getLDRCItem()) {
+          $info = $item->getRawData()->UnitInfo;
+          $address = $info->Address;
+
+          $title = '';
+          if ($address->AddressLine[0] && $address->AddressLine[0] != 'None') {
+            $title .= $address->AddressLine[0];
+          } else {
+            $title .= $info->UnitName->UnitShortName;
+          }
+          $title .=   ', ' . $address->CityName . ', ' . $address->StateProv->StateCode;
+        }
+      }
+    } else {
+      $title = token_replace($pattern, array('node' => $node), $options);
+    }
 
     drupal_set_title($title, PASS_THROUGH);
 
