@@ -35,15 +35,100 @@ function node_display_titles_permission() {
  */
 function node_display_titles_preprocess_page(&$vars) {
   if(array_key_exists('node', $vars)) {
-    $pattern = variable_get($vars['node']->type . '_title_pattern', FALSE);
-    if($pattern) {
-      $options = array(
-        'callback' => variable_get('node_display_titles_sanitization_callback', 'node_display_titles_token_sanitize'),
-        'clear' => variable_get('node_display_titles_clear_tokens', TRUE),
-      );
-      $title = token_replace($pattern, array('node' => $vars['node']), $options);
-      drupal_set_title($title, PASS_THROUGH);
+    if (!$vars['node']->node_display_titles_processed) {
+      // If we haven't already applied node_display_title patterns
+      // in the display suite hook, process title now.
+      node_display_titles_generate_title($vars['node']);
     }
+  }
+}
+
+/**
+ * @param $fields
+ * @param $entity_type
+ *
+ * Implements hook_ds_fields_info_alter. Set custom function to render title
+ * with our node title pattern.
+ */
+function node_display_titles_ds_fields_info_alter(&$field, $entity_type) {
+  if ($entity_type == 'node') {
+    $field['title']['function'] = 'node_display_titles_render_title';
+  }
+}
+
+/**
+ * @param $field
+ * @return mixed
+ *
+ * Render display suite title using our custom node title pattern.
+ */
+function node_display_titles_render_title($field) {
+  if (isset($field['entity']->nid)) {
+    // Only process title field if this is a node page.
+    $node = menu_get_object();
+    if ($node->nid == $field['entity']->nid) {
+      // Generate a custom title for this node.
+      //dsm($field);
+      $title = node_display_titles_generate_title($field['entity']);
+      if ($title) {
+        // If there was a pattern set for this node, use custom title.
+        $field['entity']->title = $title;
+      }
+
+      // Flag this node as already processed so we don't process again in
+      // hook_preprocess_page.
+      $field['entity']->node_display_titles_processed = true;
+    }
+  }
+
+  if (function_exists('ds_render_field')) {
+    // Render field with ds_render_field to make sure wrappers, classes, and
+    // other formatting are added.
+    return ds_render_field($field);
+  }
+  else {
+    // If ds_render_field function doesn't exist, just return unformatted title.
+    return $field['entity']->title;
+  }
+}
+
+/**
+ * @param $node
+ * @return mixed
+ *
+ * Generate a new title if there is a custom pattern set.
+ */
+function node_display_titles_generate_title($node) {
+  $pattern = variable_get($node->type . '_title_pattern', FALSE);
+  if($pattern) {
+    $options = array(
+      'callback' => variable_get('node_display_titles_sanitization_callback', 'node_display_titles_token_sanitize'),
+      'clear' => variable_get('node_display_titles_clear_tokens', TRUE),
+    );
+
+    if ($node->type = 'vr_listing') {
+      // Apply custom pattern for ResCMS VR listings
+      if ($entity = entity_load_single('rc_core_item', $node->rc_core_item_eid)) {
+        if ($item = $entity->getLDRCItem()) {
+          $info = $item->getRawData()->UnitInfo;
+          $address = $info->Address;
+
+          $title = '';
+          if ($address->AddressLine[0] && $address->AddressLine[0] != 'None') {
+            $title .= $address->AddressLine[0];
+          } else {
+            $title .= $info->UnitName->UnitShortName;
+          }
+          $title .=   ', ' . $address->CityName . ', ' . $address->StateProv->StateCode;
+        }
+      }
+    } else {
+      $title = token_replace($pattern, array('node' => $node), $options);
+    }
+
+    drupal_set_title($title, PASS_THROUGH);
+
+    return $title;
   }
 }
 

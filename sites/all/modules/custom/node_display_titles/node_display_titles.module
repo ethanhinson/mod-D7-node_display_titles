@@ -1,0 +1,216 @@
+<?php
+/**
+ * @file
+ * Primary hook implementations for Title Override.
+ */
+
+/**
+ * Implements hook_menu()
+ */
+function node_display_titles_menu() {
+  $items['admin/config/search/node-display-titles'] = array(
+    'title' => t('Node Display Titles'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('node_display_titles_config'),
+    'access arguments' => array('administer node display titles'),
+    'file' => 'node_display_titles.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function node_display_titles_permission() {
+  $permissions['administer node display titles'] = array(
+    'title' => t('Administer node display titles.'),
+    'description' => t('Override node titles.'),
+  );
+  return $permissions;
+}
+
+/**
+ * Implements hook_preprocess_page().
+ */
+function node_display_titles_preprocess_page(&$vars) {
+  if(array_key_exists('node', $vars)) {
+    if (empty($vars['node']->node_display_titles_processed)) {
+      // If we haven't already applied node_display_title patterns
+      // in the display suite hook, process title now.
+      $data = array('node' => $vars['node']);
+
+      node_display_titles_generate_title($data, $vars['node']->type, true);
+    }
+  }
+}
+
+/**
+ * @param $fields
+ * @param $entity_type
+ *
+ * Implements hook_ds_fields_info_alter. Set custom function to render title
+ * with our node title pattern.
+ */
+function node_display_titles_ds_fields_info_alter(&$field, $entity_type) {
+  if ($entity_type == 'node') {
+    $field['title']['function'] = 'node_display_titles_render_title';
+  }
+}
+
+/**
+ * @param $field
+ * @return mixed
+ *
+ * Render display suite title using our custom node title pattern.
+ */
+function node_display_titles_render_title($field) {
+  // Flag this node as already processed so we don't process again in
+  // hook_preprocess_page.
+  $field['entity']->node_display_titles_processed = true;
+
+  $show_custom_title = variable_get($field['bundle'] . '_' . $field['view_mode'] . '_node_display_titles_layout', '');
+
+  $page = false;
+  if (isset($field['entity']->nid)) {
+    // Always process title field if this is a node page.
+    $node = menu_get_object();
+    if ($node->nid == $field['entity']->nid) {
+      $show_custom_title = true;
+
+      // Set page flag to true to set title with drupal_set_title
+      $page = true;
+    }
+  }
+
+  if ($show_custom_title) {
+    // Generate a custom title for this node.
+    $data = array('node' => $field['entity']);
+
+    $title = node_display_titles_generate_title($data, $field['entity']->type, $page);
+
+    if ($title) {
+      // If there was a pattern set for this node, use custom title.
+      $field['entity']->title = $title;
+    }
+  }
+
+  $output = '';
+  $settings = isset($field['formatter_settings']) ? $field['formatter_settings'] : array();
+  $settings += $field['properties']['default'];
+
+  // Basic string.
+  if (isset($settings['link text'])) {
+    $output = t($settings['link text']);
+  }
+  elseif (isset($field['properties']['entity_render_key']) && isset($field['entity']->{$field['properties']['entity_render_key']})) {
+    if ($field['entity_type'] == 'user' && $field['properties']['entity_render_key'] == 'name') {
+      $output = format_username($field['entity']);
+    }
+    else {
+      // Use filter_xss instead of check_plain to allow HTML in the titles
+      $output = filter_xss($field['entity']->{$field['properties']['entity_render_key']});
+    }
+  }
+
+  // Link.
+  if ($settings['link']) {
+    if (isset($field['entity']->uri['path'])) {
+      $path = $field['entity']->uri['path'];
+    }
+    else {
+      $uri_info = entity_uri($field['entity_type'], $field['entity']);
+      $path = $uri_info['path'];
+    }
+    $output = l($output, $path);
+  }
+
+  // Wrapper and class.
+  if (!empty($settings['wrapper'])) {
+    $wrapper = check_plain($settings['wrapper']);
+    $class = (!empty($settings['class'])) ? ' class="' . check_plain($settings['class']) . '"' : '';
+    $output = '<' . $wrapper . $class . '>' . $output . '</' . $wrapper . '>';
+  }
+
+  return $output;
+}
+
+/**
+ * @param $node
+ * @return mixed
+ *
+ * Generate a new title if there is a custom pattern set.
+ */
+function node_display_titles_generate_title($data, $type, $page = false) {
+  $pattern = variable_get($type . '_title_pattern', FALSE);
+  if($pattern) {
+
+    // Load rescms entity to enable res-core-item tokens
+    if (!empty($data['node']) && $data['node']->rc_core_item_eid) {
+      $data['rc_core_item'] = entity_load_single('rc_core_item', $data['node']->rc_core_item_eid);
+    }
+
+    $options = array(
+      'callback' => variable_get('node_display_titles_sanitization_callback', 'node_display_titles_token_sanitize'),
+      'clear' => variable_get('node_display_titles_clear_tokens', TRUE),
+    );
+
+    $title = token_replace($pattern, $data, $options);
+
+    if ($page) {
+      drupal_set_title($title, PASS_THROUGH);
+    }
+
+    return $title;
+  }
+}
+
+/**
+ * Default sanitization callback for tokenized H1s
+ */
+
+function node_display_titles_token_sanitize(&$tokens) {
+  foreach($tokens as $k => $v) {
+    $tokens[$k] = strip_tags($v);
+  }
+}
+
+/**
+ * @param $entity
+ * @param $type
+ * @param $view_mode
+ * @param $langcode
+ *
+ * Implements hook_entity_view(). If a pattern is enabled for a specific entity and view mode,
+ * use it to generate and set a new title with drupal_set_title.
+ */
+function node_display_titles_entity_view($entity, $type, $view_mode, $langcode) {
+  // Check to see if a pattern is enabled for this view mode and entity type.
+  $pattern_enabled = variable_get('entity_' . $type . '_' . $view_mode . '_node_display_titles_layout');
+  if ($pattern_enabled) {
+    $is_page = false;
+    if ($view_mode == 'full') {
+      // Only call drupal_set_title if this is full view mode
+      $is_page = true;
+    }
+
+    // Check to see if there is a field set we need to override.
+    $override_field = variable_get('entity_' . $type . '_override_field');
+
+    if ($is_page || $override_field) {
+      // Generate a title from the pattern and entity data and if the view mode is full, set it as the page title.
+      // Otherwise override the user selected entity field.
+      $title = node_display_titles_generate_title(array($type => $entity), 'entity_' . $type, $is_page);
+
+      if ($entity->content[$override_field][0]['#markup']) {
+        // If markup is already set, override markup
+        $entity->content[$override_field][0]['#markup'] = $title;
+      }
+      else if (isset($entity->content[$override_field][0]['#element']['title'])) {
+        // Link fields haven't been processed into markup yet, so instead
+        // update element title if it's set.
+        $entity->content[$override_field][0]['#element']['title'] = $title;
+      }
+    }
+  }
+}
