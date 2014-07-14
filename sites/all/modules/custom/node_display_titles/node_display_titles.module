@@ -55,7 +55,6 @@ function node_display_titles_preprocess_page(&$vars) {
 function node_display_titles_ds_fields_info_alter(&$field, $entity_type) {
   if ($entity_type == 'node') {
     $field['title']['function'] = 'node_display_titles_render_title';
-    $field['property_details_title']['function'] = 'node_display_titles_render_title';
   }
 }
 
@@ -189,7 +188,29 @@ function node_display_titles_entity_view($entity, $type, $view_mode, $langcode) 
   // Check to see if a pattern is enabled for this view mode and entity type.
   $pattern_enabled = variable_get('entity_' . $type . '_' . $view_mode . '_node_display_titles_layout');
   if ($pattern_enabled) {
-    // Generate a title from the pattern and entity data and set it as the page title
-    node_display_titles_generate_title(array($type => $entity), 'entity_' . $type, true);
+    $is_page = false;
+    if ($view_mode == 'full') {
+      // Only call drupal_set_title if this is full view mode
+      $is_page = true;
+    }
+
+    // Check to see if there is a field set we need to override.
+    $override_field = variable_get('entity_' . $type . '_override_field');
+
+    if ($is_page || $override_field) {
+      // Generate a title from the pattern and entity data and if the view mode is full, set it as the page title.
+      // Otherwise override the user selected entity field.
+      $title = node_display_titles_generate_title(array($type => $entity), 'entity_' . $type, $is_page);
+
+      if ($entity->content[$override_field][0]['#markup']) {
+        // If markup is already set, override markup
+        $entity->content[$override_field][0]['#markup'] = $title;
+      }
+      else if (isset($entity->content[$override_field][0]['#element']['title'])) {
+        // Link fields haven't been processed into markup yet, so instead
+        // update element title if it's set.
+        $entity->content[$override_field][0]['#element']['title'] = $title;
+      }
+    }
   }
 }

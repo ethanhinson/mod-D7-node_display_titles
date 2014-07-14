@@ -26,7 +26,10 @@ function node_display_titles_config($form, &$form_state) {
       $layout_keys = array_keys($bundle['layouts']);
       foreach ($layout_keys as $layout) {
         // Get a human readable label for this view mode.
-        $label = $entity_info['node']['view modes'][$layout]['label'];
+        if (isset($entity_info['node']['view modes'][$layout]['label'])) {
+          $label = $entity_info['node']['view modes'][$layout]['label'];
+        }
+
         if (!$label) {
           $label = 'Default';
         }
@@ -56,8 +59,18 @@ function node_display_titles_config($form, &$form_state) {
     '#description' => t('<p>Enter patterns to use per entity. This will override the H1 display in every view mode for which it is enabled. HTML markup is allowed.</p>'),
   );
 
+  $field_info = field_info_field_map();
+
   // Generate pattern field and settings for each entity type.
   foreach ($entity_info as $entity_type => $info) {
+    // Generate a list of entity fields that can be overridden
+    $options = array();
+    foreach ($field_info as $name => $field_info_details) {
+      if (array_key_exists($entity_type, $field_info_details['bundles'])) {
+        $options[$name] = $name;
+      }
+    }
+
     // Generate an array of viewmode human readable names indexed by viewmode machine name for this entity type.
     $layouts = array();
     if (!empty($info['view modes'])) {
@@ -66,7 +79,7 @@ function node_display_titles_config($form, &$form_state) {
       }
     }
 
-    $form['node_display_titles_entities'][$entity_type] = _node_display_titles_tab($info['label'], 'entity_' . $entity_type,  $layouts);
+    $form['node_display_titles_entities'][$entity_type] = _node_display_titles_tab($info['label'], 'entity_' . $entity_type,  $layouts, $options);
   }
 
   // Add token menu to choose from
@@ -112,7 +125,7 @@ function node_display_titles_config($form, &$form_state) {
  *
  * Generate a tab with title patterns and viewmode checkboxes.
  */
-function _node_display_titles_tab($label, $type, $layouts) {
+function _node_display_titles_tab($label, $type, $layouts, $options = array()) {
   // Create a fieldset for this type's settings
   $fieldset = array(
     '#title' => $label,
@@ -126,7 +139,24 @@ function _node_display_titles_tab($label, $type, $layouts) {
     '#attributes' => array(),
     '#default_value' => variable_get($type . '_title_pattern', ''),
     '#group' => 'node_display_titles',
+    '#maxlength' => 350,
   );
+
+  if (count($options)) {
+    // Alphabetize override field dropdown options
+    ksort($options);
+
+    // Create a dropdown to select field to override for this entity type
+    $fieldset[$type . '_override_field'] = array(
+      '#title' => 'Field to Override',
+      '#type' => 'select',
+      '#attributes' => array(),
+      '#default_value' => variable_get($type . '_override_field', ''),
+      '#group' => 'node_display_titles',
+      '#maxlength' => 350,
+      '#options' => $options,
+    );
+  }
 
   if (empty($layouts)) {
     // Generate a message indicating there are no view modes for this type.
