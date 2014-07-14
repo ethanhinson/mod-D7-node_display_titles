@@ -1,4 +1,4 @@
 name = Node Display Titles
-description = "Allow users to determine H1 tags with Tokens."
+description = "Allow users to determine H1 tags and other entity fields with Tokens."
 package = Search
 core = 7.x
