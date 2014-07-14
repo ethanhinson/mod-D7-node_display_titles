@@ -3,7 +3,7 @@ Author: Ethan Hinson
 
 Description
 ===========
-Provides patterns for H1 titles.
+Provides patterns for H1 titles and entity fields.
 
 Installation
 ============
